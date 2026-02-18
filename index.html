@@ -460,6 +460,7 @@
   // ─────────────────────────────────────────────────────────────────
   let state      = { names: [], currentIndex: 0 };
   let lastAction = null;
+  let currentUid = null; // populated after auth
 
   // ─────────────────────────────────────────────────────────────────
   // UI helpers
@@ -490,7 +491,15 @@
     if (!ref) return;
     setSyncStatus('Syncing…');
     try {
-      await ref.set({ names: state.names });
+      // Normalize items before saving: ensure arrays exist and drop legacy booleans
+      const toSave = state.names.map(item => {
+        const copy = Object.assign({}, item);
+        if (!Array.isArray(copy.likedBy)) copy.likedBy = Array.isArray(copy.likedBy) ? copy.likedBy : [];
+        if (!Array.isArray(copy.swipedBy)) copy.swipedBy = Array.isArray(copy.swipedBy) ? copy.swipedBy : [];
+        delete copy.liked; delete copy.swiped;
+        return copy;
+      });
+      await ref.set({ names: toSave });
       setSyncStatus('✓ Saved');
     } catch (e) {
       setSyncStatus('⚠ Sync failed');
@@ -511,10 +520,17 @@
     try {
       const doc = await ref.get();
       if (doc.exists && Array.isArray(doc.data().names) && doc.data().names.length > 0) {
-        state.names = doc.data().names;
+        // Migrate each item to ensure per-user arrays exist
+        state.names = doc.data().names.map(item => {
+          const copy = Object.assign({}, item);
+          if (!Array.isArray(copy.likedBy)) copy.likedBy = [];
+          if (!Array.isArray(copy.swipedBy)) copy.swipedBy = [];
+          delete copy.liked; delete copy.swiped;
+          return copy;
+        });
       } else {
         // First ever run — seed Firestore with all 49 names
-        state.names = defaultNames.map(n => ({...n}));
+        state.names = defaultNames.map(n => ({...n, swipedBy: [], likedBy: []}));
         await ref.set({ names: state.names });
       }
 
@@ -525,7 +541,13 @@
       ref.onSnapshot(
         (docSnapshot) => {
           if (docSnapshot.exists) {
-            state.names = docSnapshot.data().names;
+            state.names = docSnapshot.data().names.map(item => {
+              const copy = Object.assign({}, item);
+              if (!Array.isArray(copy.likedBy)) copy.likedBy = [];
+              if (!Array.isArray(copy.swipedBy)) copy.swipedBy = [];
+              delete copy.liked; delete copy.swiped;
+              return copy;
+            });
             renderAll();
           }
         },
@@ -547,7 +569,7 @@
         'Error: <code>' + err.message + '</code>'
       );
       // Graceful offline fallback
-      state.names = defaultNames.map(n => ({...n}));
+      state.names = defaultNames.map(n => ({...n, swipedBy: [], likedBy: []}));
       renderAll();
     }
   }
@@ -558,7 +580,8 @@
   function computeScores() {
     const s = {};
     for (const item of state.names) {
-      if (item.liked) s[item.suggestedBy] = (s[item.suggestedBy] || 0) + 1;
+      const count = Array.isArray(item.likedBy) ? item.likedBy.length : (item.liked ? 1 : 0);
+      if (count) s[item.suggestedBy] = (s[item.suggestedBy] || 0) + count;
     }
     return s;
   }
@@ -578,14 +601,26 @@
   const progressBar  = document.getElementById('progressBar');
   const card         = document.getElementById('card');
 
-  function currentItem() { return state.names[state.currentIndex] || null; }
+  // Return the list of names visible to this logged-in user (those they
+  // haven't swiped yet). If not signed in, return the full list.
+  function visibleNames() {
+    if (!currentUid) return state.names;
+    return state.names.filter(item => {
+      if (!item.swipedBy) return true;
+      return !item.swipedBy.includes(currentUid);
+    });
+  }
+
+  function currentItem() { return visibleNames()[state.currentIndex] || null; }
 
   // ─────────────────────────────────────────────────────────────────
   // Render
   // ─────────────────────────────────────────────────────────────────
   function renderCard() {
-    const total       = state.names.length;
-    const swipedCount = state.names.filter(n => n.swiped).length;
+    const total = state.names.length;
+    const swipedCount = currentUid
+      ? state.names.filter(n => Array.isArray(n.swipedBy) && n.swipedBy.includes(currentUid)).length
+      : state.names.filter(n => n.swiped).length;
     progressBar.style.width = total ? `${(swipedCount / total) * 100}%` : '0%';
 
     if (!total) {
@@ -608,7 +643,8 @@
     card.classList.remove('done-state');
     nameDisplay.textContent = item.name;
     metaDisplay.innerHTML   = `Suggested by <span>${item.suggestedBy}</span>`;
-    indexInfo.textContent   = `${state.currentIndex + 1} of ${total}`;
+    const visibleCount = visibleNames().length;
+    indexInfo.textContent   = `${state.currentIndex + 1} of ${visibleCount}`;
     statusMsg.textContent   = '';
     btnLeft.disabled = btnRight.disabled = false;
   }
@@ -619,10 +655,12 @@
     state.names.forEach((item, idx) => {
       const div = document.createElement('div');
       div.className = 'list-item';
+      const userSwiped = currentUid && Array.isArray(item.swipedBy) && item.swipedBy.includes(currentUid);
+      const userLiked  = currentUid && Array.isArray(item.likedBy)  && item.likedBy.includes(currentUid);
       div.innerHTML = `
         <span class="lname">${idx + 1}. ${item.name}</span>
-        <span class="lright">${item.suggestedBy}${item.swiped
-          ? `<span class="swiped-check">${item.liked ? ' ♥' : ' ✕'}</span>` : ''}</span>`;
+        <span class="lright">${item.suggestedBy}${userSwiped
+          ? `<span class="swiped-check">${userLiked ? ' ♥' : ' ✕'}</span>` : ''}</span>`;
       allNamesList.appendChild(div);
     });
   }
@@ -661,27 +699,41 @@
 
   function moveNext() {
     const next = state.currentIndex + 1;
-    state.currentIndex = next > state.names.length ? state.names.length : next;
+    const vmax = visibleNames().length;
+    state.currentIndex = next > vmax ? vmax : next;
   }
 
   function swipeLeft() {
-    const item = currentItem(); if (!item) return;
-    lastAction = { index: state.currentIndex };
-    item.swiped = true; item.liked = false;
+    const item = currentItem(); if (!item || !currentUid) return;
+    lastAction = { index: state.currentIndex, uid: currentUid };
+    if (!Array.isArray(item.swipedBy)) item.swipedBy = [];
+    if (!item.swipedBy.includes(currentUid)) item.swipedBy.push(currentUid);
+    if (Array.isArray(item.likedBy)) {
+      const i = item.likedBy.indexOf(currentUid); if (i !== -1) item.likedBy.splice(i, 1);
+    }
     animateCard('left', () => { moveNext(); saveState(); renderAll(); });
   }
 
   function swipeRight() {
-    const item = currentItem(); if (!item) return;
-    lastAction = { index: state.currentIndex };
-    item.swiped = true; item.liked = true;
+    const item = currentItem(); if (!item || !currentUid) return;
+    lastAction = { index: state.currentIndex, uid: currentUid };
+    if (!Array.isArray(item.swipedBy)) item.swipedBy = [];
+    if (!item.swipedBy.includes(currentUid)) item.swipedBy.push(currentUid);
+    if (!Array.isArray(item.likedBy)) item.likedBy = [];
+    if (!item.likedBy.includes(currentUid)) item.likedBy.push(currentUid);
     animateCard('right', () => { moveNext(); saveState(); renderAll(); });
   }
 
   function undoLast() {
     if (!lastAction) return;
-    const item = state.names[lastAction.index]; if (!item) return;
-    item.swiped = false; item.liked = false;
+    const item = visibleNames()[lastAction.index] || state.names[lastAction.index]; if (!item) return;
+    const uid = lastAction.uid || currentUid;
+    if (uid && Array.isArray(item.swipedBy)) {
+      const i = item.swipedBy.indexOf(uid); if (i !== -1) item.swipedBy.splice(i, 1);
+    }
+    if (uid && Array.isArray(item.likedBy)) {
+      const i = item.likedBy.indexOf(uid); if (i !== -1) item.likedBy.splice(i, 1);
+    }
     state.currentIndex = lastAction.index;
     lastAction = null;
     saveState(); renderAll();
@@ -689,7 +741,10 @@
 
   function addName(name, suggestedBy) {
     if (!name.trim() || !suggestedBy.trim()) return;
-    state.names.push({ name: name.trim(), suggestedBy: suggestedBy.trim(), swiped: false, liked: false });
+    state.names.push({
+      name: name.trim(), suggestedBy: suggestedBy.trim(),
+      swipedBy: [], likedBy: []
+    });
     if (state.currentIndex >= state.names.length - 1) state.currentIndex = state.names.length - 1;
     saveState(); renderAll();
   }
@@ -727,10 +782,13 @@
   // double-initialisation when the auth listener fires multiple times.
   let firestoreInitialized = false;
   firebase.auth().onAuthStateChanged((user) => {
+    currentUid = user ? user.uid : null;
     if (user && !firestoreInitialized) {
       firestoreInitialized = true;
       initFirestore();
     }
+    // Re-render UI on user change so per-user markers update immediately
+    renderAll();
   });
 </script>
 </body>
