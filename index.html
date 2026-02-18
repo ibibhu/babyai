@@ -495,8 +495,19 @@
       // Normalize items before saving: ensure arrays exist and drop legacy booleans
       const toSave = state.names.map(item => {
         const copy = Object.assign({}, item);
-        if (!Array.isArray(copy.likedBy)) copy.likedBy = Array.isArray(copy.likedBy) ? copy.likedBy : [];
-        if (!Array.isArray(copy.swipedBy)) copy.swipedBy = Array.isArray(copy.swipedBy) ? copy.swipedBy : [];
+        // Ensure likedBy/swipedBy are arrays of voter objects { uid, displayName? }
+        copy.likedBy = (Array.isArray(copy.likedBy) ? copy.likedBy : []).map(v => {
+          if (!v) return null;
+          if (typeof v === 'string') return { uid: v };
+          if (typeof v === 'object') return { uid: v.uid || v.id || '', displayName: v.displayName || v.name || null };
+          return null;
+        }).filter(Boolean);
+        copy.swipedBy = (Array.isArray(copy.swipedBy) ? copy.swipedBy : []).map(v => {
+          if (!v) return null;
+          if (typeof v === 'string') return { uid: v };
+          if (typeof v === 'object') return { uid: v.uid || v.id || '', displayName: v.displayName || v.name || null };
+          return null;
+        }).filter(Boolean);
         delete copy.liked; delete copy.swiped;
         return copy;
       });
@@ -526,8 +537,27 @@
         // Migrate each item to ensure per-user arrays exist
         state.names = doc.data().names.map(item => {
           const copy = Object.assign({}, item);
-          if (!Array.isArray(copy.likedBy)) copy.likedBy = [];
-          if (!Array.isArray(copy.swipedBy)) copy.swipedBy = [];
+          // Normalize likedBy/swipedBy to arrays of { uid, displayName? }
+          if (!Array.isArray(copy.likedBy)) {
+            copy.likedBy = [];
+          } else {
+            copy.likedBy = copy.likedBy.map(v => {
+              if (!v) return null;
+              if (typeof v === 'string') return { uid: v };
+              if (typeof v === 'object') return { uid: v.uid || v.id || '', displayName: v.displayName || v.name || null };
+              return null;
+            }).filter(Boolean);
+          }
+          if (!Array.isArray(copy.swipedBy)) {
+            copy.swipedBy = [];
+          } else {
+            copy.swipedBy = copy.swipedBy.map(v => {
+              if (!v) return null;
+              if (typeof v === 'string') return { uid: v };
+              if (typeof v === 'object') return { uid: v.uid || v.id || '', displayName: v.displayName || v.name || null };
+              return null;
+            }).filter(Boolean);
+          }
           delete copy.liked; delete copy.swiped;
           return copy;
         });
@@ -546,12 +576,30 @@
         (docSnapshot) => {
           if (docSnapshot.exists) {
             state.names = docSnapshot.data().names.map(item => {
-              const copy = Object.assign({}, item);
-              if (!Array.isArray(copy.likedBy)) copy.likedBy = [];
-              if (!Array.isArray(copy.swipedBy)) copy.swipedBy = [];
-              delete copy.liked; delete copy.swiped;
-              return copy;
-            });
+                  const copy = Object.assign({}, item);
+                  if (!Array.isArray(copy.likedBy)) {
+                    copy.likedBy = [];
+                  } else {
+                    copy.likedBy = copy.likedBy.map(v => {
+                      if (!v) return null;
+                      if (typeof v === 'string') return { uid: v };
+                      if (typeof v === 'object') return { uid: v.uid || v.id || '', displayName: v.displayName || v.name || null };
+                      return null;
+                    }).filter(Boolean);
+                  }
+                  if (!Array.isArray(copy.swipedBy)) {
+                    copy.swipedBy = [];
+                  } else {
+                    copy.swipedBy = copy.swipedBy.map(v => {
+                      if (!v) return null;
+                      if (typeof v === 'string') return { uid: v };
+                      if (typeof v === 'object') return { uid: v.uid || v.id || '', displayName: v.displayName || v.name || null };
+                      return null;
+                    }).filter(Boolean);
+                  }
+                  delete copy.liked; delete copy.swiped;
+                  return copy;
+                });
             masterTotal = Math.max(masterTotal, state.names.length);
             renderAll();
           }
@@ -611,8 +659,8 @@
   function visibleNames() {
     if (!currentUid) return state.names;
     return state.names.filter(item => {
-      if (!item.swipedBy) return true;
-      return !item.swipedBy.includes(currentUid);
+      if (!Array.isArray(item.swipedBy)) return true;
+      return !item.swipedBy.some(v => v && (v.uid === currentUid));
     });
   }
 
@@ -624,7 +672,7 @@
   function renderCard() {
     const total = masterTotal || state.names.length;
     const swipedCount = currentUid
-      ? state.names.filter(n => Array.isArray(n.swipedBy) && n.swipedBy.includes(currentUid)).length
+      ? state.names.filter(n => Array.isArray(n.swipedBy) && n.swipedBy.some(v => v && v.uid === currentUid)).length
       : state.names.filter(n => n.swiped).length;
     progressBar.style.width = total ? `${(swipedCount / total) * 100}%` : '0%';
 
@@ -659,8 +707,8 @@
     state.names.forEach((item, idx) => {
       const div = document.createElement('div');
       div.className = 'list-item';
-      const userSwiped = currentUid && Array.isArray(item.swipedBy) && item.swipedBy.includes(currentUid);
-      const userLiked  = currentUid && Array.isArray(item.likedBy)  && item.likedBy.includes(currentUid);
+      const userSwiped = currentUid && Array.isArray(item.swipedBy) && item.swipedBy.some(v => v && v.uid === currentUid);
+      const userLiked  = currentUid && Array.isArray(item.likedBy)  && item.likedBy.some(v => v && v.uid === currentUid);
       div.innerHTML = `
         <span class="lname">${idx + 1}. ${item.name}</span>
         <span class="lright">${item.suggestedBy}${userSwiped
@@ -711,9 +759,9 @@
     const item = currentItem(); if (!item || !currentUid) return;
     lastAction = { index: state.currentIndex, uid: currentUid };
     if (!Array.isArray(item.swipedBy)) item.swipedBy = [];
-    if (!item.swipedBy.includes(currentUid)) item.swipedBy.push(currentUid);
+    if (!item.swipedBy.some(v => v && v.uid === currentUid)) item.swipedBy.push({ uid: currentUid, displayName: currentDisplayName || null });
     if (Array.isArray(item.likedBy)) {
-      const i = item.likedBy.indexOf(currentUid); if (i !== -1) item.likedBy.splice(i, 1);
+      const i = item.likedBy.findIndex(v => v && v.uid === currentUid); if (i !== -1) item.likedBy.splice(i, 1);
     }
     animateCard('left', () => { moveNext(); saveState(); renderAll(); });
   }
@@ -722,9 +770,9 @@
     const item = currentItem(); if (!item || !currentUid) return;
     lastAction = { index: state.currentIndex, uid: currentUid };
     if (!Array.isArray(item.swipedBy)) item.swipedBy = [];
-    if (!item.swipedBy.includes(currentUid)) item.swipedBy.push(currentUid);
+    if (!item.swipedBy.some(v => v && v.uid === currentUid)) item.swipedBy.push({ uid: currentUid, displayName: currentDisplayName || null });
     if (!Array.isArray(item.likedBy)) item.likedBy = [];
-    if (!item.likedBy.includes(currentUid)) item.likedBy.push(currentUid);
+    if (!item.likedBy.some(v => v && v.uid === currentUid)) item.likedBy.push({ uid: currentUid, displayName: currentDisplayName || null });
     animateCard('right', () => { moveNext(); saveState(); renderAll(); });
   }
 
@@ -733,10 +781,10 @@
     const item = visibleNames()[lastAction.index] || state.names[lastAction.index]; if (!item) return;
     const uid = lastAction.uid || currentUid;
     if (uid && Array.isArray(item.swipedBy)) {
-      const i = item.swipedBy.indexOf(uid); if (i !== -1) item.swipedBy.splice(i, 1);
+      const i = item.swipedBy.findIndex(v => v && v.uid === uid); if (i !== -1) item.swipedBy.splice(i, 1);
     }
     if (uid && Array.isArray(item.likedBy)) {
-      const i = item.likedBy.indexOf(uid); if (i !== -1) item.likedBy.splice(i, 1);
+      const i = item.likedBy.findIndex(v => v && v.uid === uid); if (i !== -1) item.likedBy.splice(i, 1);
     }
     state.currentIndex = lastAction.index;
     lastAction = null;
