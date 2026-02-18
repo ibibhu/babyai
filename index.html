@@ -475,6 +475,16 @@
   // ─────────────────────────────────────────────────────────────────
   // Firestore save  (mirrors your updateReaction pattern)
   // ─────────────────────────────────────────────────────────────────
+  // Backwards-compatible helper: some pages expect a global DOC_REF()
+  // while firebase-init.js exposes `window.docRef`. Provide a wrapper
+  // so existing code calling `DOC_REF()` keeps working.
+  function DOC_REF() {
+    if (typeof window === 'undefined') return null;
+    if (window.docRef) return window.docRef;
+    if (window.fireDb) return window.fireDb.collection('babyNames').doc('state');
+    return null;
+  }
+
   async function saveState() {
     const ref = DOC_REF();
     if (!ref) return;
