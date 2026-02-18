@@ -504,6 +504,8 @@
   async function initFirestore() {
     const ref = DOC_REF();
     if (!ref) return;
+    // Clear any previous error UI when attempting a new connect
+    const eb = document.getElementById('errorBanner'); if (eb) { eb.style.display = 'none'; eb.innerHTML = ''; }
     setSyncStatus('Connecting…');
 
     try {
@@ -719,7 +721,17 @@
   // ─────────────────────────────────────────────────────────────────
   //initFirestore();
 
-  firebase.auth().onAuthStateChanged(() => { initFirestore(); });
+  // Only initialise Firestore once we've confirmed the user is signed in.
+  // This avoids an initial unauthenticated read that can trigger permissions
+  // errors when Firestore rules require auth. Guard with a flag to prevent
+  // double-initialisation when the auth listener fires multiple times.
+  let firestoreInitialized = false;
+  firebase.auth().onAuthStateChanged((user) => {
+    if (user && !firestoreInitialized) {
+      firestoreInitialized = true;
+      initFirestore();
+    }
+  });
 </script>
 </body>
 </html>
