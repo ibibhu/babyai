@@ -757,7 +757,8 @@
 
   function swipeLeft() {
     const item = currentItem(); if (!item || !currentUid) return;
-    lastAction = { index: state.currentIndex, uid: currentUid };
+    // Store the item name so we can find it exactly during undo
+    lastAction = { index: state.currentIndex, uid: currentUid, itemName: item.name };
     if (!Array.isArray(item.swipedBy)) item.swipedBy = [];
     if (!item.swipedBy.some(v => v && v.uid === currentUid)) item.swipedBy.push({ uid: currentUid, displayName: currentDisplayName || null });
     if (Array.isArray(item.likedBy)) {
@@ -768,7 +769,8 @@
 
   function swipeRight() {
     const item = currentItem(); if (!item || !currentUid) return;
-    lastAction = { index: state.currentIndex, uid: currentUid };
+    // Store the item name so we can find it exactly during undo
+    lastAction = { index: state.currentIndex, uid: currentUid, itemName: item.name };
     if (!Array.isArray(item.swipedBy)) item.swipedBy = [];
     if (!item.swipedBy.some(v => v && v.uid === currentUid)) item.swipedBy.push({ uid: currentUid, displayName: currentDisplayName || null });
     if (!Array.isArray(item.likedBy)) item.likedBy = [];
@@ -778,15 +780,27 @@
 
   function undoLast() {
     if (!lastAction) return;
-    const item = visibleNames()[lastAction.index] || state.names[lastAction.index]; if (!item) return;
     const uid = lastAction.uid || currentUid;
-    if (uid && Array.isArray(item.swipedBy)) {
-      const i = item.swipedBy.findIndex(v => v && v.uid === uid); if (i !== -1) item.swipedBy.splice(i, 1);
+    
+    // Find the exact item by name
+    const itemToRestore = state.names.find(n => n.name === lastAction.itemName);
+    
+    if (!itemToRestore) return;
+    
+    // Remove the user from swipedBy
+    if (uid && Array.isArray(itemToRestore.swipedBy)) {
+      const i = itemToRestore.swipedBy.findIndex(v => v && v.uid === uid); 
+      if (i !== -1) itemToRestore.swipedBy.splice(i, 1);
     }
-    if (uid && Array.isArray(item.likedBy)) {
-      const i = item.likedBy.findIndex(v => v && v.uid === uid); if (i !== -1) item.likedBy.splice(i, 1);
+    // Remove the user from likedBy (in case it was a right swipe)
+    if (uid && Array.isArray(itemToRestore.likedBy)) {
+      const i = itemToRestore.likedBy.findIndex(v => v && v.uid === uid); 
+      if (i !== -1) itemToRestore.likedBy.splice(i, 1);
     }
+    
+    // Set currentIndex back to the index we stored (in visible names)
     state.currentIndex = lastAction.index;
+    
     lastAction = null;
     saveState(); renderAll();
   }
