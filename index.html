@@ -198,7 +198,7 @@
     .name-display {
       font-family: var(--font-display);
       font-size: 56px; font-weight: 700;
-      letter-spacing: -0.5px; line-height: 1.05;
+      letter-spacing: -0.5px; line-height: 1.15;
       margin-bottom: 10px;
       background: linear-gradient(150deg, #fff 20%, var(--accent) 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -461,6 +461,7 @@
   let lastAction = null;
   let currentUid = null; // populated after auth
   let currentDisplayName = null; // populated after auth
+  let masterTotal = 0; // never-decreasing total count shown in UI
 
   // ─────────────────────────────────────────────────────────────────
   // UI helpers
@@ -499,7 +500,9 @@
         delete copy.liked; delete copy.swiped;
         return copy;
       });
+      console.debug('saveState: writing', toSave.length, toSave.map(n => n.name));
       await ref.set({ names: toSave });
+      console.debug('saveState: write complete');
       setSyncStatus('✓ Saved');
     } catch (e) {
       setSyncStatus('⚠ Sync failed');
@@ -528,6 +531,7 @@
           delete copy.liked; delete copy.swiped;
           return copy;
         });
+        masterTotal = Math.max(masterTotal, state.names.length);
       } else {
         // First ever run — seed Firestore with all 49 names
         state.names = defaultNames.map(n => ({...n, swipedBy: [], likedBy: []}));
@@ -548,6 +552,7 @@
               delete copy.liked; delete copy.swiped;
               return copy;
             });
+            masterTotal = Math.max(masterTotal, state.names.length);
             renderAll();
           }
         },
@@ -617,7 +622,7 @@
   // Render
   // ─────────────────────────────────────────────────────────────────
   function renderCard() {
-    const total = state.names.length;
+    const total = masterTotal || state.names.length;
     const swipedCount = currentUid
       ? state.names.filter(n => Array.isArray(n.swipedBy) && n.swipedBy.includes(currentUid)).length
       : state.names.filter(n => n.swiped).length;
@@ -643,8 +648,7 @@
     card.classList.remove('done-state');
     nameDisplay.textContent = item.name;
     metaDisplay.innerHTML   = `Suggested by <span>${item.suggestedBy}</span>`;
-    const visibleCount = visibleNames().length;
-    indexInfo.textContent   = `${state.currentIndex + 1} of ${visibleCount}`;
+    indexInfo.textContent   = `${state.currentIndex + 1} of ${total}`;
     statusMsg.textContent   = '';
     btnLeft.disabled = btnRight.disabled = false;
   }
