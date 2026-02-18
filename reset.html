@@ -4,8 +4,13 @@
   <meta charset="utf-8" />
   <title>Reset — Baby Name Swipe</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+<!-- Shared init + Google Auth (replaces all firebase config in each file) -->
+<script src="firebase-init.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -72,17 +77,6 @@
 </div>
 
 <script>
-  const firebaseConfig = {
-    apiKey:            'AIzaSyAUh7dLZOQUZP31o6ZJXBIhcM-dMeWnV4k',
-    authDomain:        'bikycaughtitli.firebaseapp.com',
-    projectId:         'bikycaughtitli',
-    storageBucket:     'bikycaughtitli.appspot.com',
-    messagingSenderId: '1050640892741',
-    appId:             '1:1050640892741:web:85ff9850063045a6e6f42c',
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  const fireDb  = firebase.firestore();
   const docRef  = fireDb.collection('babyNames').doc('state');
   const btnReset = document.getElementById('btnReset');
   const status   = document.getElementById('status');
