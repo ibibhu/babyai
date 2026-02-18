@@ -4,7 +4,7 @@
 
 A single-page web app for Amrita & Bikram to let friends and family vote on baby boy names before the birth. It works like Tinder for names — swipe right to like, swipe left to pass. Scores are tallied per suggester and shown on a live leaderboard.
 
-The app is a **single HTML file** (`baby-name-swipe.html`) with no build step. It is deployed on Netlify as a static site.
+The app is a **single HTML file** (`index.html`) with no build step. It is deployed on Netlify as a static site.
 
 ---
 
