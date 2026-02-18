@@ -406,8 +406,7 @@
   <div class="section">
     <h2>Add a name</h2>
     <form id="addForm">
-      <input id="newName"      placeholder="Name — e.g. Advitiya"       required autocomplete="off" />
-      <input id="newSuggester" placeholder="Suggested by — e.g. Soumya" required autocomplete="off" />
+      <input id="newName" placeholder="Name — e.g. Advitiya" required autocomplete="off" />
       <button class="btn-add" type="submit">+ Add name</button>
     </form>
     <p class="hint">Votes sync live across all devices via Firestore.</p>
@@ -461,6 +460,7 @@
   let state      = { names: [], currentIndex: 0 };
   let lastAction = null;
   let currentUid = null; // populated after auth
+  let currentDisplayName = null; // populated after auth
 
   // ─────────────────────────────────────────────────────────────────
   // UI helpers
@@ -740,9 +740,10 @@
   }
 
   function addName(name, suggestedBy) {
-    if (!name.trim() || !suggestedBy.trim()) return;
+    const sugg = (currentDisplayName && currentDisplayName.trim()) ? currentDisplayName.trim() : (suggestedBy || '').trim();
+    if (!name.trim() || !sugg) return;
     state.names.push({
-      name: name.trim(), suggestedBy: suggestedBy.trim(),
+      name: name.trim(), suggestedBy: sugg,
       swipedBy: [], likedBy: []
     });
     if (state.currentIndex >= state.names.length - 1) state.currentIndex = state.names.length - 1;
@@ -766,9 +767,9 @@
   document.getElementById('addForm').addEventListener('submit', e => {
     e.preventDefault();
     const n = document.getElementById('newName');
-    const s = document.getElementById('newSuggester');
-    addName(n.value, s.value);
-    n.value = s.value = ''; n.focus();
+    addName(n.value);
+    n.value = '';
+    n.focus();
   });
 
   // ─────────────────────────────────────────────────────────────────
@@ -783,6 +784,9 @@
   let firestoreInitialized = false;
   firebase.auth().onAuthStateChanged((user) => {
     currentUid = user ? user.uid : null;
+    currentDisplayName = user ? (user.displayName || user.email || '') : null;
+    // If the suggester input exists, populate and lock it for signed-in users
+    // No suggester input in UI anymore — we derive suggester from the signed-in user.
     if (user && !firestoreInitialized) {
       firestoreInitialized = true;
       initFirestore();
