@@ -1,0 +1,8 @@
+{
+  "name": "baby-name-swipe",
+  "version": "1.0.0",
+  "description": "Amrita & Bikram's Baby Boy name voting app",
+  "scripts": {
+    "start": "npx serve ."
+  }
+}

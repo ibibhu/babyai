@@ -1,0 +1,7 @@
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/*"
+  to   = "/baby-name-swipe.html"
+  status = 200
