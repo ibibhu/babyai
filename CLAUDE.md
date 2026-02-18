@@ -39,47 +39,56 @@ No npm build, no bundler, no framework. Everything is in one file.
 - **Service used:** Firestore (NOT Realtime Database)
 - **Collection:** `babyNames`
 - **Document:** `state`
-- **Document shape:**
+- **Document shape (current schema):**
   ```json
   {
     "names": [
-      { "name": "Atharv", "suggestedBy": "Biswajit", "swiped": false, "liked": false },
+      {
+        "name": "Atharv",
+        "suggestedBy": "Biswajit",
+        "swipedBy": ["uid_a", "uid_b"],
+        "likedBy": ["uid_b"]
+      },
       ...
     ]
   }
   ```
-- Firebase compat SDK is loaded via CDN in `<head>` (no npm import)
-- The app mirrors the same pattern as the existing Vue project's `@/plugins/firebase.js`:
-  ```js
-  fireDb.collection('babyNames').doc('state')
-  ```
-- On first load, if the Firestore document is empty, the app seeds it with all 49 default names
-- Live updates use `onSnapshot()` so all devices stay in sync in real time
+
+- The app uses the Firebase compat SDK loaded via CDN in `<head>` (no npm import).
+- The code exposes a small compatibility helper `DOC_REF()` (in `index.html`) which returns the `babyNames/state` doc ref whether `firebase-init.js` exports `window.docRef` or only `window.fireDb`.
+- On first load the app will seed the Firestore doc if empty. Live updates use `onSnapshot()` so all devices stay in sync.
+
+Migration notes:
+- The app previously used legacy boolean flags `swiped`/`liked`. The code now migrates items to `swipedBy`/`likedBy` arrays on load. Existing boolean fields are preserved only during migration if present but are removed before writing the new schema back to Firestore.
 
 ---
 
 ## How the app works
 
-### State model
-Each name entry:
+### State model (per-item)
+Each name entry now uses per-user arrays so multiple people can like/swipe independently without clobbering each other:
+
 ```js
-{ name: String, suggestedBy: String, swiped: Boolean, liked: Boolean }
+{
+  name: String,
+  suggestedBy: String,      // display name of the suggester (auto-filled from signed-in user)
+  swipedBy: [uidString],    // user ids who have swiped this name
+  likedBy: [uidString]      // user ids who have liked this name
+}
 ```
 
-- `swiped: true` means the current user has acted on this name
-- `liked: true` means they pressed ♥ Love it (false = ✕ Pass)
-- **Scores are computed fresh** from `liked` flags — there is no separate score field
-- `currentIndex` is **per-device only** (not saved to Firestore) — each person swipes independently
-- The shared Firestore document only stores `names[]` — so swipe state is global
+- `swipedBy` and `likedBy` are arrays of user identifiers (current code stores raw UIDs). The UI shows readable voter names where available (e.g. if the array contains objects with `displayName`).
+- Scores are computed from the length of `likedBy` for each name.
+- `currentIndex` remains per-device only (not saved to Firestore) — each person swipes independently.
 
 ### Key functions (do not rename)
-- `initFirestore()` — loads data, seeds defaults, sets up `onSnapshot` listener
-- `saveState()` — writes `state.names` to Firestore
-- `computeScores()` — derives leaderboard from `liked` flags
-- `swipeLeft()` / `swipeRight()` — mark name as swiped/liked, call saveState, advance index
-- `undoLast()` — reverses the last single swipe
+- `initFirestore()` — waits for auth (the app now initializes Firestore only after Firebase Auth settles), loads data, seeds defaults, migrates legacy flags and sets up `onSnapshot` listener
+- `saveState()` — normalizes items (ensures `likedBy`/`swipedBy` arrays, drops legacy booleans) and writes `state.names` to Firestore
+- `computeScores()` — derives leaderboard from `likedBy` counts
+- `swipeLeft()` / `swipeRight()` — push the current user's UID into `swipedBy` and optionally into `likedBy`, call `saveState()`, advance index
+- `undoLast()` — removes the last action for the acting user
 - `renderAll()` — re-renders card + all names list + leaderboard
-- `addName(name, suggestedBy)` — pushes a new name and saves
+- `addName(name)` — pushes a new name and saves; suggestedBy is automatically set to the signed-in user's display name (the `Suggested by` input was removed from the UI)
 
 ### Undo
 Only one level of undo is supported (`lastAction` stores the last swipe index only).
@@ -148,5 +157,6 @@ npx serve .
 
 - Only one undo level (last swipe only)
 - `currentIndex` resets on page refresh (each person starts from name #1)
-- No authentication — anyone with the URL can swipe and add names
-- Firestore test mode expires after 30 days — update rules before then
+- The app depends on Firebase Auth for per-user behaviour — users must sign in to have their UID stored in `swipedBy`/`likedBy`.
+- Currently `likedBy`/`swipedBy` store raw UIDs. To show readable voter names in all places you can change the code to store `{ uid, displayName }` objects (recommended) — the UI already prefers display names when present.
+- Firestore test mode expires after 30 days — update rules before then. Consider using a Cloud Function + callable endpoint for admin-only mass operations (like reset) instead of client-side write rules.
