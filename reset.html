@@ -77,7 +77,14 @@
 </div>
 
 <script>
-  const docRef  = fireDb.collection('babyNames').doc('state');
+  // Use DOC_REF() if available for consistency with other pages
+  function DOC_REF() {
+    if (typeof window === 'undefined') return null;
+    if (window.docRef) return window.docRef;
+    if (window.fireDb) return window.fireDb.collection('babyNames').doc('state');
+    return null;
+  }
+  const docRef  = DOC_REF();
   const btnReset = document.getElementById('btnReset');
   const status   = document.getElementById('status');
 
@@ -99,8 +106,15 @@
       }
 
       const names = doc.data().names || [];
-      const reset = names.map(n => ({ ...n, swiped: false, liked: false }));
+      // Clear per-user arrays and remove legacy booleans
+      const reset = names.map(n => {
+        const copy = { name: n.name, suggestedBy: n.suggestedBy };
+        copy.swipedBy = [];
+        copy.likedBy = [];
+        return copy;
+      });
 
+      console.debug('reset: writing', reset.length, reset.map(x => x.name));
       await docRef.set({ names: reset });
 
       status.textContent = `✓ Done! ${reset.length} names reset. All votes cleared.`;
