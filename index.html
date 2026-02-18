@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Amritha & Bikram's Baby Boy 👶</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <!--
+    Firebase compat CDN — same API style as your Vue plugin (fireDb.collection().doc())
+    Must be in <head> so they are fully loaded before the <script> in <body> runs.
+  -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0d0d0f;
+      --surface: #15151a;
+      --surface2: #1c1c24;
+      --border: rgba(255,255,255,0.08);
+      --text: #f0ede8;
+      --muted: #7a7880;
+      --accent: #c9a96e;
+      --accent-dim: rgba(201,169,110,0.12);
+      --reject: #c96e6e;
+      --reject-dim: rgba(201,110,110,0.12);
+      --like: #6ec98a;
+      --like-dim: rgba(110,201,138,0.12);
+      --radius: 16px;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-body: 'DM Sans', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+    .wrap {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 400px;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 20px;
+    }
+    header { text-align: center; padding-top: 8px; }
+    header h1 {
+      font-family: var(--font-display);
+      font-size: 24px; font-weight: 700;
+      letter-spacing: -0.5px; line-height: 1.3;
+    }
+    header p {
+      font-size: 12px; color: var(--muted);
+      margin-top: 4px; letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .progress-wrap { width: 100%; height: 3px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+    .progress-bar  { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.4s ease; }
+    #syncStatus    { font-size: 11px; color: var(--muted); letter-spacing: 0.4px; align-self: flex-end; margin-top: -12px; }
+    #errorBanner {
+      display: none; width: 100%;
+      background: rgba(201,110,110,0.1);
+      border: 1px solid rgba(201,110,110,0.3);
+      border-radius: 10px; padding: 14px 16px;
+      font-size: 13px; color: #e08080; line-height: 1.7;
+    }
+    #errorBanner strong { color: #eba0a0; }
+    #errorBanner code   { font-size: 12px; opacity: 0.8; }
+
+    /* Card */
+    .card {
+      width: 100%; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 32px 24px 24px; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.4;
+    }
+    .card.animate-left  { animation: slideLeft  0.28s ease forwards; }
+    .card.animate-right { animation: slideRight 0.28s ease forwards; }
+    @keyframes slideLeft  { to { transform: translateX(-18px); opacity: 0; } }
+    @keyframes slideRight { to { transform: translateX( 18px); opacity: 0; } }
+
+    .index-info { font-size: 11px; color: var(--muted); letter-spacing: 0.8px; text-transform: uppercase; margin-bottom: 20px; }
+    .name-display { font-family: var(--font-display); font-size: 42px; font-weight: 700; letter-spacing: -1px; line-height: 1.1; margin-bottom: 10px; }
+    .meta-display { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .meta-display span { color: var(--accent); font-weight: 500; }
+
+    .buttons { display: flex; gap: 10px; }
+    .btn {
+      flex: 1; padding: 13px 10px; border-radius: 10px;
+      border: 1px solid transparent; font-family: var(--font-body);
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn:active   { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.3; cursor: default; pointer-events: none; }
+    .btn-reject { background: var(--reject-dim); color: var(--reject); border-color: rgba(201,110,110,0.2); }
+    .btn-reject:hover { background: rgba(201,110,110,0.2); }
+    .btn-like   { background: var(--like-dim);   color: var(--like);   border-color: rgba(110,201,138,0.2); }
+    .btn-like:hover   { background: rgba(110,201,138,0.2); }
+
+    .btn-undo {
+      width: 100%; margin-top: 8px; padding: 9px;
+      background: rgba(255,255,255,0.06); color: var(--muted);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-family: var(--font-body); font-size: 12px; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-undo:hover    { background: rgba(255,255,255,0.1); color: var(--text); }
+    .btn-undo:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+    .status-msg { font-size: 11px; color: var(--muted); margin-top: 10px; min-height: 16px; }
+
+    /* Sections */
+    .section { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+    .section h2 { font-family: var(--font-display); font-size: 16px; font-weight: 500; margin-bottom: 14px; }
+    form { display: flex; flex-direction: column; gap: 8px; }
+    input {
+      padding: 10px 12px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--surface2);
+      color: var(--text); font-family: var(--font-body); font-size: 13px;
+      outline: none; transition: border-color 0.15s;
+    }
+    input::placeholder { color: var(--muted); }
+    input:focus { border-color: var(--accent); }
+    .btn-add {
+      padding: 10px; border-radius: 8px;
+      border: 1px solid rgba(201,169,110,0.3);
+      background: var(--accent-dim); color: var(--accent);
+      font-family: var(--font-body); font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-add:hover { background: rgba(201,169,110,0.2); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+    .list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+    .list::-webkit-scrollbar { width: 4px; }
+    .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    .list-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 10px; border-radius: 8px;
+      background: var(--surface2); font-size: 13px;
+    }
+    .lname  { color: var(--text); }
+    .lright { color: var(--muted); font-size: 12px; }
+    .swiped-check { color: var(--accent); margin-left: 4px; }
+
+    .leader-item {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 12px; border-radius: 10px;
+      background: var(--surface2); font-size: 13px;
+      gap: 8px; margin-bottom: 4px;
+    }
+    .leader-item.winner { background: var(--accent-dim); border: 1px solid rgba(201,169,110,0.25); }
+    .leader-rank  { width: 20px; text-align: center; font-size: 11px; color: var(--muted); }
+    .leader-name  { flex: 1; font-weight: 500; }
+    .leader-score { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--accent); }
+    .winner-badge {
+      font-size: 10px; background: var(--accent); color: #0d0d0f;
+      padding: 2px 6px; border-radius: 99px; font-weight: 600;
+      letter-spacing: 0.5px; text-transform: uppercase;
+    }
+    .no-data { font-size: 13px; color: var(--muted); text-align: center; padding: 8px; }
+    .done-state .name-display { font-size: 32px; color: var(--accent); }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div style="font-size:52px; margin-bottom:8px; line-height:1;">👶</div>
+    <h1>Amritha & Bikram's<br>Baby Boy</h1>
+    <p>Vote for your favourite name</p>
+  </header>
+
+  <div id="errorBanner"></div>
+
+  <div class="progress-wrap" style="width:100%">
+    <div class="progress-bar" id="progressBar" style="width:0%"></div>
+  </div>
+  <div id="syncStatus">Connecting…</div>
+
+  <div class="card" id="card">
+    <div class="index-info" id="indexInfo">Loading…</div>
+    <div class="name-display" id="nameDisplay">—</div>
+    <div class="meta-display" id="metaDisplay"></div>
+    <div class="buttons">
+      <button class="btn btn-reject" id="btnLeft"  disabled>✕ Pass</button>
+      <button class="btn btn-like"   id="btnRight" disabled>♥ Love it</button>
+    </div>
+    <button class="btn-undo" id="btnUndo" disabled>↩ Undo last swipe</button>
+    <div class="status-msg" id="statusMsg"></div>
+  </div>
+
+  <div class="section">
+    <h2>Add a name</h2>
+    <form id="addForm">
+      <input id="newName"      placeholder="Name — e.g. Advitiya"       required autocomplete="off" />
+      <input id="newSuggester" placeholder="Suggested by — e.g. Soumya" required autocomplete="off" />
+      <button class="btn-add" type="submit">Add name</button>
+    </form>
+    <p class="hint">Votes sync live across all devices via Firestore.</p>
+  </div>
+
+  <div class="section">
+    <h2>All names</h2>
+    <div class="list" id="allNamesList"><div class="no-data">Loading…</div></div>
+  </div>
+
+  <div class="section">
+    <h2>Leaderboard</h2>
+    <div class="list" id="scoresList"><div class="no-data">Loading…</div></div>
+  </div>
+
+</div>
+
+<script>
+  // ─────────────────────────────────────────────────────────────────
+  // Firebase + Firestore setup  (same compat API as your Vue plugin)
+  // ─────────────────────────────────────────────────────────────────
+  const firebaseConfig = {
+    apiKey:            'AIzaSyAUh7dLZOQUZP31o6ZJXBIhcM-dMeWnV4k',
+    authDomain:        'bikycaughtitli.firebaseapp.com',
+    projectId:         'bikycaughtitli',
+    storageBucket:     'bikycaughtitli.appspot.com',
+    messagingSenderId: '1050640892741',
+    appId:             '1:1050640892741:web:85ff9850063045a6e6f42c',
+  };
+
+  // fireDb mirrors how your Vue plugin exports it
+  let fireDb;
+  try {
+    firebase.initializeApp(firebaseConfig);
+    fireDb = firebase.firestore();
+  } catch (e) {
+    showError(
+      '<strong>Firebase failed to initialise.</strong><br>' +
+      'Make sure this file is opened via a web server (not double-clicked as a local file).<br>' +
+      'Error: <code>' + e.message + '</code>'
+    );
+  }
+
+  // Firestore document reference — mirrors your existing reactions pattern
+  // Collection: "babyNames"  Document: "state"
+  const DOC_REF = () => fireDb && fireDb.collection('babyNames').doc('state');
+
+  // ─────────────────────────────────────────────────────────────────
+  // App state (currentIndex is per-device, not synced — each person
+  // swipes through independently; likes/passes are shared globally)
+  // ─────────────────────────────────────────────────────────────────
+  let state      = { names: [], currentIndex: 0 };
+  let lastAction = null;
+
+  // ─────────────────────────────────────────────────────────────────
+  // UI helpers
+  // ─────────────────────────────────────────────────────────────────
+  function setSyncStatus(msg) { document.getElementById('syncStatus').textContent = msg; }
+
+  function showError(html) {
+    const b = document.getElementById('errorBanner');
+    b.innerHTML     = '⚠️ ' + html;
+    b.style.display = 'block';
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Firestore save  (mirrors your updateReaction pattern)
+  // ─────────────────────────────────────────────────────────────────
+  async function saveState() {
+    const ref = DOC_REF();
+    if (!ref) return;
+    setSyncStatus('Syncing…');
+    try {
+      await ref.set({ names: state.names });
+      setSyncStatus('✓ Saved');
+    } catch (e) {
+      setSyncStatus('⚠ Sync failed');
+      showError('Could not save: <code>' + e.message + '</code>');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Firestore init  (mirrors your fetchReactions / onSnapshot pattern)
+  // ─────────────────────────────────────────────────────────────────
+  async function initFirestore() {
+    const ref = DOC_REF();
+    if (!ref) return;
+    setSyncStatus('Connecting…');
+
+    try {
+      const doc = await ref.get();
+      if (doc.exists && Array.isArray(doc.data().names) && doc.data().names.length > 0) {
+        state.names = doc.data().names;
+      } else {
+        // First ever run — seed Firestore with all 49 names
+        state.names = defaultNames.map(n => ({...n}));
+        await ref.set({ names: state.names });
+      }
+
+      setSyncStatus('✓ Connected');
+      renderAll();
+
+      // Live listener — same onSnapshot pattern as your Vue component
+      ref.onSnapshot(
+        (docSnapshot) => {
+          if (docSnapshot.exists) {
+            state.names = docSnapshot.data().names;
+            renderAll();
+          }
+        },
+        (err) => {
+          setSyncStatus('⚠ Listener error');
+          console.error(err);
+        }
+      );
+
+    } catch (err) {
+      setSyncStatus('⚠ Failed');
+      showError(
+        '<strong>Cannot connect to Firestore.</strong><br><br>' +
+        'Steps to fix:<br>' +
+        '1. Go to <strong>console.firebase.google.com</strong> → project <strong>bikycaughtitli</strong><br>' +
+        '2. Sidebar → <strong>Build → Firestore Database</strong><br>' +
+        '3. Click <strong>Create database</strong> → choose <strong>Test mode</strong><br>' +
+        '4. Also make sure this file is served via a web server, not opened as a local file.<br><br>' +
+        'Error: <code>' + err.message + '</code>'
+      );
+      // Graceful offline fallback
+      state.names = defaultNames.map(n => ({...n}));
+      renderAll();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Compute scores from liked flags
+  // ─────────────────────────────────────────────────────────────────
+  function computeScores() {
+    const s = {};
+    for (const item of state.names) {
+      if (item.liked) s[item.suggestedBy] = (s[item.suggestedBy] || 0) + 1;
+    }
+    return s;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // DOM refs
+  // ─────────────────────────────────────────────────────────────────
+  const nameDisplay  = document.getElementById('nameDisplay');
+  const metaDisplay  = document.getElementById('metaDisplay');
+  const indexInfo    = document.getElementById('indexInfo');
+  const statusMsg    = document.getElementById('statusMsg');
+  const allNamesList = document.getElementById('allNamesList');
+  const scoresList   = document.getElementById('scoresList');
+  const btnLeft      = document.getElementById('btnLeft');
+  const btnRight     = document.getElementById('btnRight');
+  const btnUndo      = document.getElementById('btnUndo');
+  const progressBar  = document.getElementById('progressBar');
+  const card         = document.getElementById('card');
+
+  function currentItem() { return state.names[state.currentIndex] || null; }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────
+  function renderCard() {
+    const total       = state.names.length;
+    const swipedCount = state.names.filter(n => n.swiped).length;
+    progressBar.style.width = total ? `${(swipedCount / total) * 100}%` : '0%';
+
+    if (!total) {
+      nameDisplay.textContent = 'No names yet';
+      metaDisplay.innerHTML   = '';
+      indexInfo.textContent   = 'Add some names below';
+      btnLeft.disabled = btnRight.disabled = true;
+      return;
+    }
+    const item = currentItem();
+    if (!item) {
+      card.classList.add('done-state');
+      nameDisplay.textContent = 'All done! 🎉';
+      metaDisplay.innerHTML   = `<span>${swipedCount}</span> of ${total} names reviewed`;
+      indexInfo.textContent   = '';
+      statusMsg.textContent   = '';
+      btnLeft.disabled = btnRight.disabled = true;
+      return;
+    }
+    card.classList.remove('done-state');
+    nameDisplay.textContent = item.name;
+    metaDisplay.innerHTML   = `Suggested by <span>${item.suggestedBy}</span>`;
+    indexInfo.textContent   = `${state.currentIndex + 1} of ${total}`;
+    statusMsg.textContent   = '';
+    btnLeft.disabled = btnRight.disabled = false;
+  }
+
+  function renderAllNames() {
+    allNamesList.innerHTML = '';
+    if (!state.names.length) { allNamesList.innerHTML = `<div class="no-data">No names added yet.</div>`; return; }
+    state.names.forEach((item, idx) => {
+      const div = document.createElement('div');
+      div.className = 'list-item';
+      div.innerHTML = `
+        <span class="lname">${idx + 1}. ${item.name}</span>
+        <span class="lright">${item.suggestedBy}${item.swiped
+          ? `<span class="swiped-check">${item.liked ? ' ♥' : ' ✕'}</span>` : ''}</span>`;
+      allNamesList.appendChild(div);
+    });
+  }
+
+  function renderScores() {
+    scoresList.innerHTML = '';
+    const entries = Object.entries(computeScores()).sort((a, b) => b[1] - a[1]);
+    if (!entries.length) { scoresList.innerHTML = `<div class="no-data">No likes yet — start swiping!</div>`; return; }
+    const maxScore = entries[0][1];
+    entries.forEach(([person, score], i) => {
+      const div = document.createElement('div');
+      div.className = `leader-item${score === maxScore ? ' winner' : ''}`;
+      div.innerHTML = `
+        <span class="leader-rank">${i + 1}</span>
+        <span class="leader-name">${person}</span>
+        ${score === maxScore ? `<span class="winner-badge">winning</span>` : ''}
+        <span class="leader-score">${score}</span>`;
+      scoresList.appendChild(div);
+    });
+  }
+
+  function renderAll() {
+    renderCard();
+    renderAllNames();
+    renderScores();
+    btnUndo.disabled = !lastAction;
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Actions
+  // ─────────────────────────────────────────────────────────────────
+  function animateCard(dir, cb) {
+    card.classList.add(dir === 'left' ? 'animate-left' : 'animate-right');
+    setTimeout(() => { card.classList.remove('animate-left', 'animate-right'); cb(); }, 280);
+  }
+
+  function moveNext() {
+    const next = state.currentIndex + 1;
+    state.currentIndex = next > state.names.length ? state.names.length : next;
+  }
+
+  function swipeLeft() {
+    const item = currentItem(); if (!item) return;
+    lastAction = { index: state.currentIndex };
+    item.swiped = true; item.liked = false;
+    animateCard('left', () => { moveNext(); saveState(); renderAll(); });
+  }
+
+  function swipeRight() {
+    const item = currentItem(); if (!item) return;
+    lastAction = { index: state.currentIndex };
+    item.swiped = true; item.liked = true;
+    animateCard('right', () => { moveNext(); saveState(); renderAll(); });
+  }
+
+  function undoLast() {
+    if (!lastAction) return;
+    const item = state.names[lastAction.index]; if (!item) return;
+    item.swiped = false; item.liked = false;
+    state.currentIndex = lastAction.index;
+    lastAction = null;
+    saveState(); renderAll();
+  }
+
+  function addName(name, suggestedBy) {
+    if (!name.trim() || !suggestedBy.trim()) return;
+    state.names.push({ name: name.trim(), suggestedBy: suggestedBy.trim(), swiped: false, liked: false });
+    if (state.currentIndex >= state.names.length - 1) state.currentIndex = state.names.length - 1;
+    saveState(); renderAll();
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Events
+  // ─────────────────────────────────────────────────────────────────
+  btnLeft.addEventListener('click', swipeLeft);
+  btnRight.addEventListener('click', swipeRight);
+  btnUndo.addEventListener('click', undoLast);
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowLeft')                   swipeLeft();
+    if (e.key === 'ArrowRight')                  swipeRight();
+    if (e.key === 'z' && (e.metaKey||e.ctrlKey)) undoLast();
+  });
+
+  document.getElementById('addForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const n = document.getElementById('newName');
+    const s = document.getElementById('newSuggester');
+    addName(n.value, s.value);
+    n.value = s.value = ''; n.focus();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // Boot
+  // ─────────────────────────────────────────────────────────────────
+  initFirestore();
+</script>
+</body>
+</html>
