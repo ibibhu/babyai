@@ -110,7 +110,7 @@
     overlay.id = 'fb-auth-overlay';
     overlay.innerHTML = `
       <span style="font-size:54px;filter:drop-shadow(0 0 22px rgba(255,183,197,0.65));">👶</span>
-      <h2>Amritha &amp; Bikram's<br>Baby Boy</h2>
+      <h2>Amrita &amp; Bikram's<br>Baby Boy</h2>
       <p>Sign in with your Google account to vote on names.</p>
       <button id="fb-sign-in-btn">
         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" />
