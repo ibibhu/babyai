@@ -290,15 +290,35 @@
 </script>
 
 <script>
-  const docRef = fireDb.collection('babyNames').doc('state');
+  // Robust doc ref getter (works if firebase-init exposes `docRef` or `fireDb`)
+  function DOC_REF() {
+    if (typeof window === 'undefined') return null;
+    if (window.docRef) return window.docRef;
+    if (window.fireDb) return window.fireDb.collection('babyNames').doc('state');
+    return null;
+  }
+
+  const docRef = DOC_REF();
+  if (!docRef) {
+    setSyncStatus('⚠ Firestore not initialised');
+    console.error('loved.html: cannot find Firestore docRef');
+  }
 
   function setSyncStatus(msg) { document.getElementById('syncStatus').textContent = msg; }
 
   const MEDALS = ['🥇', '🥈', '🥉'];
 
   function render(names) {
-    const loved   = names.filter(n => n.liked);
-    const swiped  = names.filter(n => n.swiped).length;
+    // Normalize items and support both legacy booleans and new per-user arrays
+    const norm = names.map(item => {
+      const copy = Object.assign({}, item);
+      if (!Array.isArray(copy.likedBy)) copy.likedBy = copy.liked ? ['<legacy>'] : [];
+      if (!Array.isArray(copy.swipedBy)) copy.swipedBy = copy.swiped ? ['<legacy>'] : [];
+      return copy;
+    });
+
+    const loved   = norm.filter(n => Array.isArray(n.likedBy) && n.likedBy.length > 0);
+    const swiped  = norm.filter(n => Array.isArray(n.swipedBy) && n.swipedBy.length > 0).length;
 
     // Stats
     document.getElementById('statLoved').textContent  = loved.length;
@@ -308,6 +328,11 @@
     // Loved names list
     const grid = document.getElementById('namesList');
     grid.innerHTML = '';
+    // Determine top (winning) name(s)
+    let topCount = 0;
+    norm.forEach(it => { const c = Array.isArray(it.likedBy) ? it.likedBy.length : 0; if (c > topCount) topCount = c; });
+    const winners = norm.filter(it => (Array.isArray(it.likedBy) ? it.likedBy.length : 0) === topCount && topCount > 0);
+
     if (!loved.length) {
       grid.innerHTML = `<div class="empty"><div class="big">🤍</div>No loved names yet.<br>Start swiping to add some!</div>`;
     } else {
@@ -315,24 +340,48 @@
         const div = document.createElement('div');
         div.className = 'name-card';
         div.style.animationDelay = `${i * 0.05}s`;
+        // Voters: support objects with `displayName` or plain strings (uids)
+        const voters = Array.isArray(item.likedBy) ? item.likedBy.map(v => {
+          if (!v) return '';
+          if (typeof v === 'object') return v.displayName || v.name || (v.uid || '').slice(0,6);
+          return (typeof v === 'string' && v.length > 10) ? v.slice(0,6) : v;
+        }).filter(Boolean) : [];
+        const votersLine = voters.length ? `<div class="by">voted by <span>${voters.join(', ')}</span> · ${voters.length} vote${voters.length>1?'s':''}</div>` : '';
+
+        // Highlight winner(s)
+        const isWinner = (Array.isArray(item.likedBy) ? item.likedBy.length : 0) === topCount && topCount > 0;
         div.innerHTML = `
-          <span class="heart">♥</span>
+          <span class="heart">${isWinner ? '🏆' : '♥'}</span>
           <div class="info">
-            <div class="name">${item.name}</div>
+            <div class="name">${item.name}${isWinner ? ' — winning' : ''}</div>
             <div class="by">suggested by <span>${item.suggestedBy}</span></div>
+            ${votersLine}
           </div>`;
         grid.appendChild(div);
       });
     }
 
+    // If there's a clear single winner, show a small banner above the section
+    const lovedSection = document.getElementById('lovedSection');
+    const existingBanner = document.getElementById('winnerBanner');
+    if (existingBanner) existingBanner.remove();
+    if (winners && winners.length === 1) {
+      const b = document.createElement('div');
+      b.id = 'winnerBanner';
+      b.style.cssText = 'margin-bottom:8px;padding:10px;border-radius:10px;background:linear-gradient(90deg,rgba(255,210,100,0.08),rgba(255,183,197,0.04));border:1px solid rgba(255,210,100,0.12);font-weight:700;text-align:center;';
+      b.textContent = `Current leader: ${winners[0].name} — ${topCount} vote${topCount>1?'s':''}`;
+      lovedSection.insertBefore(b, lovedSection.firstChild);
+    }
+
     // Leaderboard
     const scores = {};
     const likedByPerson = {};
-    for (const item of names) {
-      if (item.liked) {
-        scores[item.suggestedBy] = (scores[item.suggestedBy] || 0) + 1;
+    for (const item of norm) {
+      const count = Array.isArray(item.likedBy) ? item.likedBy.length : (item.liked ? 1 : 0);
+      if (count) {
+        scores[item.suggestedBy] = (scores[item.suggestedBy] || 0) + count;
         if (!likedByPerson[item.suggestedBy]) likedByPerson[item.suggestedBy] = [];
-        likedByPerson[item.suggestedBy].push(item.name);
+        likedByPerson[item.suggestedBy].push(item.name + (count>1?` (${count})`:''));
       }
     }
 
@@ -363,20 +412,24 @@
 
   // Init + live updates
   setSyncStatus('Connecting…');
-  docRef.onSnapshot(
-    (snap) => {
-      if (snap.exists && Array.isArray(snap.data().names)) {
-        setSyncStatus('✓ Live');
-        render(snap.data().names);
-      } else {
-        setSyncStatus('No data yet');
+  if (docRef) {
+    docRef.onSnapshot(
+      (snap) => {
+        console.debug('loved.html: snapshot', snap && snap.data && snap.data());
+        if (snap.exists && Array.isArray(snap.data().names)) {
+          setSyncStatus('✓ Live');
+          render(snap.data().names);
+        } else {
+          setSyncStatus('No data yet');
+          console.warn('loved.html: snapshot exists but no names array', snap && snap.data && snap.data());
+        }
+      },
+      (err) => {
+        setSyncStatus('⚠ ' + err.message);
+        console.error(err);
       }
-    },
-    (err) => {
-      setSyncStatus('⚠ ' + err.message);
-      console.error(err);
-    }
-  );
+    );
+  }
 </script>
 </body>
 </html>
